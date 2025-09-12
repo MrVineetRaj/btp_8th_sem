@@ -1,4 +1,4 @@
-# Edge-constrained Deep Unfolding Network for Image Resolution
+# Edge Priors Guided Deep Unfolding Network for Image Resolution
 Our project dedicated to use edge prior as constraint for better guiding image reconstruction process, which could enchance the final reconstruction effects.
 ## Folder Structure of Project
 ```
@@ -30,7 +30,7 @@ Our project dedicated to use edge prior as constraint for better guiding image r
 
 │  ├─denoisingModule.py
 
-│  ├─ecdun.py
+│  ├─epgdun.py
 
 │  ├─edgefeatureextractionModule.py
 
