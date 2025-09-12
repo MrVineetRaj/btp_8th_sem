@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 
+
 from models.denoisingModule import EncodingBlock, EncodingBlockEnd, DecodingBlock, DecodingBlockEnd
 from models.residualprojectionModule import UCNet
 from models.textureReconstructionModule import ConvDown, ConvUp
@@ -259,3 +260,4 @@ class EDDUN(nn.Module):
             # x[i + 1] = x
 
         return x
+
