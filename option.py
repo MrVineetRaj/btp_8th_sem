@@ -1,5 +1,4 @@
 import argparse
-
 import template
 
 parser = argparse.ArgumentParser(description='EDSR and MDSR')
@@ -52,7 +51,7 @@ parser.add_argument('--chop', action='store_true',  # 启用内存高效转发
                     help='enable memory-efficient forward')
 
 # model 设置
-parser.add_argument('--model', default='ECDUNCBP',  # 使用的模型
+parser.add_argument('--model', default='EPGDUNCBP',  # 使用的模型
                     help='model name')
 
 parser.add_argument('--act', type=str, default='relu',  # 激活函数
@@ -154,3 +153,4 @@ for arg in vars(args):
         vars(args)[arg] = True
     elif vars(args)[arg] == 'False':
         vars(args)[arg] = False
+
