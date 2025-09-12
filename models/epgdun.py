@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 
-
 from models.denoisingModule import EncodingBlock, EncodingBlockEnd, DecodingBlock, DecodingBlockEnd
 from models.residualprojectionModule import UCNet
 from models.textureReconstructionModule import ConvDown, ConvUp
@@ -12,10 +11,8 @@ from models.intermediatevariableupdateModule import EGIM
 from models.variableguidereconstructionModule import IGRM
 import torch.nn.functional as F
 
-
 def make_model(args, parent=False):
     return EDDUN(args)
-
 
 class EDDUN(nn.Module):
     def __init__(self, args):
@@ -257,7 +254,9 @@ class EDDUN(nn.Module):
             x = x_init[i + 1] + delta_up
             # #--------------------next stage update--------------------------------------------------
             outs.append(x)
+            
             # x[i + 1] = x
 
         return x
+
 
