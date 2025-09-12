@@ -8,7 +8,6 @@ import utility
 import time
 import torch.nn.functional as F
 
-
 class Trainer:
     def __init__(self, args, loader, my_model, my_loss, ckp):
         self.args = args
@@ -175,3 +174,4 @@ class Trainer:
         else:
             epoch = self.scheduler.last_epoch + 1
             return epoch >= self.args.epochs
+
