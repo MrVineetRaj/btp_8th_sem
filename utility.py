@@ -2,7 +2,6 @@ import datetime
 import math
 import os
 import time
-
 import matplotlib
 
 matplotlib.use('Agg')
