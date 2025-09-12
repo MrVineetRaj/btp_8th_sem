@@ -4,7 +4,6 @@ from torch.utils.data.dataloader import default_collate  # 根据样本类型自
 
 from mydata.myDataLoader import MSDataLoader
 
-
 class Data:
     def __init__(self, args):
         """ 直接构造loader并返回
