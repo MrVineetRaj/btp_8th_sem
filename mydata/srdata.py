@@ -18,6 +18,8 @@ class SRData(data.Dataset):
         self.benchmark = benchmark
         self.scale = args.scale
         self.idx_scale = 0
+        self.use_degradation = getattr(args, 'use_degradation', False)
+        self._current_deg_params = None
         self._set_filesystem(args.dir_data)
 
         def _load_bin():
@@ -101,10 +103,18 @@ class SRData(data.Dataset):
 
     def __getitem__(self, idx):
         lr, hr, filename = self._load_file(idx)  # 获取对应下标的数据集
-        lr, hr = self._get_patch(lr, hr)
+        lr, hr, deg_params = self._get_patch(lr, hr)
         lr, hr = common.set_channel([lr, hr], self.args.n_colors)
         lr_tensor, hr_tensor = common.np2Tensor([lr, hr], self.args.rgb_range)
-        return lr_tensor, hr_tensor, filename
+        
+        # Prepare degradation parameters tensors if available
+        if deg_params is not None:
+            kernel_size = getattr(self.args, 'kernel_size', 21)
+            kernel_tensor = common.get_degradation_kernel_tensor(deg_params, kernel_size)
+            noise_tensor = common.get_noise_level_tensor(deg_params)
+            return lr_tensor, hr_tensor, filename, kernel_tensor, noise_tensor
+        
+        return lr_tensor, hr_tensor, filename, None, None
 
     def __len__(self):
         """返回数据集的数量"""
@@ -137,17 +147,25 @@ class SRData(data.Dataset):
         patch_size = self.args.patch_size
         scale = self.scale[self.idx_scale]
         multi_scale = len(self.scale) > 1
+        deg_params = None
+        
         if self.train:
             lr, hr = common.get_patch(  # 裁剪
                 lr, hr, patch_size, scale, multi_scale=multi_scale
             )
             lr, hr = common.augment([lr, hr])  # 图片增墒
+            
+            # Apply realistic degradation augmentation if enabled
+            if self.use_degradation:
+                lr, deg_params = common.add_degradation(lr, self.args)
+                self._current_deg_params = deg_params
+            
             lr = common.add_noise(lr, self.args.noise)  # 增加噪音
         else:
             ih, iw = lr.shape[0:2]
             hr = hr[0:ih * scale, 0:iw * scale]  # 简单裁切
 
-        return lr, hr
+        return lr, hr, deg_params
 
     def set_scale(self, idx_scale):
         self.idx_scale = idx_scale

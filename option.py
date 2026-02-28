@@ -50,6 +50,20 @@ parser.add_argument('--noise', type=str, default='.',  # 高斯噪声标准
 parser.add_argument('--chop', action='store_true',  # 启用内存高效转发
                     help='enable memory-efficient forward')
 
+# Degradation settings for real-world robustness
+parser.add_argument('--use_degradation', action='store_true',
+                    help='Enable realistic degradation augmentation during training')
+parser.add_argument('--blur_sigma_range', type=str, default='0.2,3.0',
+                    help='Gaussian blur sigma range (min,max)')
+parser.add_argument('--jpeg_quality_range', type=str, default='30,95',
+                    help='JPEG compression quality range (min,max)')
+parser.add_argument('--degradation_prob', type=float, default=0.5,
+                    help='Probability of applying each degradation type')
+parser.add_argument('--kernel_size', type=int, default=21,
+                    help='Blur kernel size for degradation estimation')
+parser.add_argument('--deg_loss_weight', type=float, default=0.1,
+                    help='Weight for degradation estimation loss')
+
 # model 设置
 parser.add_argument('--model', default='EPGDUNCBP',  # 使用的模型
                     help='model name')

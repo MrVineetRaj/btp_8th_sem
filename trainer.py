@@ -23,6 +23,9 @@ class Trainer:
         self.loss = my_loss
         self.optimizer = utility.make_optimizer(args, self.model)  # 优化器
         self.scheduler = utility.make_scheduler(args, self.optimizer)  # 调度器
+        
+        # Degradation-aware training settings
+        self.use_degradation = getattr(args, 'use_degradation', False)
 
         if self.args.load != '.':  # 不等于表示需要加载优化器的状态字典
             self.optimizer.load_state_dict(
@@ -50,7 +53,12 @@ class Trainer:
                 eval_acc = 0
                 self.loader_test.dataset.set_scale(idx_scale)
                 tqdm_test = tqdm(self.loader_test, ncols=80)  # 进度条显示
-                for idx_img, (lr, hr, filename, _) in enumerate(tqdm_test):
+                for idx_img, batch_data in enumerate(tqdm_test):
+                    # Handle both old and new data format
+                    if len(batch_data) >= 5:
+                        lr, hr, filename = batch_data[0], batch_data[1], batch_data[2]
+                    else:
+                        lr, hr, filename, _ = batch_data
                     filename = filename[0]  # 测试数据集名称
                     no_eval = (hr.nelement() == 1)  # 用于判断当前HR图像的像素是否为1
                     if not no_eval:  # 如果当前HR图像像素不为1
@@ -110,24 +118,66 @@ class Trainer:
         # print("self.args.test_only_train:", self.args.test_only)
         timer_data, timer_model = utility.timer(), utility.timer()
         # tqdm_train = tqdm(self.loader_train, ncols=80)
-        for batch, (lr, hr, _, idx_scale) in enumerate(self.loader_train):
+        for batch, batch_data in enumerate(self.loader_train):
+            # Unpack batch data - handle both old and new format
+            if len(batch_data) == 5:
+                lr, hr, _, gt_kernel, gt_noise = batch_data
+                idx_scale = 0
+            elif len(batch_data) == 6:
+                lr, hr, _, gt_kernel, gt_noise, idx_scale = batch_data
+            else:
+                lr, hr, _, idx_scale = batch_data
+                gt_kernel, gt_noise = None, None
 
             lr, hr = self.prepare([lr, hr])  # 将传入的LR,HR图像转为半精度
+            
+            # Prepare degradation ground truth if available
+            if gt_kernel is not None and gt_kernel[0] is not None:
+                gt_kernel = self.prepare([gt_kernel])[0]
+            else:
+                gt_kernel = None
+            if gt_noise is not None and gt_noise[0] is not None:
+                gt_noise = self.prepare([gt_noise])[0]
+            else:
+                gt_noise = None
 
             timer_data.hold()  # 暂停计时器
             timer_model.tic()  # 重启计时器
 
             self.optimizer.zero_grad()  # 清除梯度
-            sr = self.model(lr, idx_scale)
+            
+            # Forward pass with optional degradation estimation
+            if self.use_degradation:
+                result = self.model(lr, idx_scale, return_degradation=True)
+                if isinstance(result, tuple):
+                    sr, deg_pred = result
+                    pred_kernel = deg_pred.get('blur_kernel', None)
+                    pred_noise = deg_pred.get('noise_level', None)
+                else:
+                    sr = result
+                    pred_kernel, pred_noise = None, None
+            else:
+                sr = self.model(lr, idx_scale)
+                pred_kernel, pred_noise = None, None
+
+            # Prepare degradation parameters dict for loss
+            deg_params = None
+            if self.use_degradation and pred_kernel is not None:
+                deg_params = {
+                    'pred_kernel': pred_kernel,
+                    'pred_noise': pred_noise,
+                    'gt_kernel': gt_kernel,
+                    'gt_noise': gt_noise
+                }
 
             # 计算loss
             if isinstance(sr, list):  # 如果对应恢复的SR网络是一个列表格式，那么对应对每一个SR求损失，然后对损失求和然后求平均
                 loss = 0
                 for sr_ in sr:
-                    loss += self.loss(sr_, hr)
+                    loss += self.loss(sr_, hr, deg_params)
                 loss = loss / len(sr)
             else:
-                loss = self.loss(sr, hr)
+                loss = self.loss(sr, hr, deg_params)
 
             if loss.item() < self.args.skip_threshold * self.error_last:  # 算出的损失比上一次还要小，可以进行更新
                 loss.requires_grad_(True)  # 设置当前损失函数的需要计算梯度的属性为真

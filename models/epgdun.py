@@ -9,6 +9,7 @@ from models.edgemap import EdgeMap
 from models.edgefeatureextractionModule import EAFM
 from models.intermediatevariableupdateModule import EGIM
 from models.variableguidereconstructionModule import IGRM
+from models.degradationEstimation import DegradationEstimator, DegradationAwareConv
 import torch.nn.functional as F
 
 def make_model(args, parent=False):
@@ -24,6 +25,20 @@ class EDDUN(nn.Module):
         self.down_factor = args.scale[0]
         self.patch_size = args.patch_size
         self.batch_size = int(args.batch_size / args.n_GPUs)
+        
+        # Degradation estimation settings
+        self.use_degradation = getattr(args, 'use_degradation', False)
+        self.kernel_size = getattr(args, 'kernel_size', 21)
+        
+        # Degradation estimator module
+        if self.use_degradation:
+            self.deg_estimator = DegradationEstimator(
+                in_channels=args.n_colors,
+                kernel_size=self.kernel_size,
+                num_features=64
+            )
+            self.deg_aware_conv = DegradationAwareConv(kernel_size=self.kernel_size)
+        
         # 降噪块
         self.Encoding_block1 = EncodingBlock(64)
         self.Encoding_block2 = EncodingBlock(64)
@@ -85,9 +100,12 @@ class EDDUN(nn.Module):
         self.conv_up = ConvUp(3, self.up_factor)
         self.conv_down = ConvDown(3, self.up_factor)
         # ----------------------残差投影块---------------------------------------------------
-        # 模糊核
+        # 模糊核 (used as fallback when degradation estimation is disabled)
         self.blur = nn.Conv2d(in_channels=3, out_channels=3, kernel_size=3, stride=1,
                               padding=1, bias=False)
+        
+        # Noise-aware regularization parameter (learnable)
+        self.noise_reg_weight = nn.Parameter(torch.tensor(1.0))
         # 下采样
         # self.down_sample = nn.MaxPool2d(kernel_size=self.up_factor + 1, stride=1)
         self.UCNet = UCNet(3, 64)
@@ -103,10 +121,17 @@ class EDDUN(nn.Module):
         self.IGRM = IGRM()
         # self.test_only = args.test_only
 
-    def forward(self, y):  # [batch_size ,3 ,7 ,270 ,480] ;
-        # if self.test_only:
-        #     print("test_only:", self.test_only)
-        # print(y.shape)  #[batch_size,3,200,200]
+    def forward(self, y, return_degradation=False):  # [batch_size ,3 ,7 ,270 ,480] ;
+        """Forward pass with optional degradation estimation.
+        
+        Args:
+            y: Low-resolution input image (B, C, H, W)
+            return_degradation: If True, also return estimated degradation parameters
+            
+        Returns:
+            x: Super-resolved output image
+            (optional) deg_params: Dict with 'blur_kernel' and 'noise_level' if return_degradation=True
+        """
         fea_list = []  # 保存每一个阶段的在输入denoising module之前的初始提取的特征
         V_list = []  # 用于保存每一层RNNF模块的输入特征图
         outs = []  # 用于保存每一个阶段被所有的模块处理过的图像x
@@ -116,6 +141,15 @@ class EDDUN(nn.Module):
         f_init = []
         x_init = []
         v_init = []
+        
+        # Estimate degradation parameters if enabled
+        estimated_kernel = None
+        estimated_noise = None
+        if self.use_degradation:
+            estimated_kernel, estimated_noise = self.deg_estimator(y)
+            # Add small epsilon to noise level for numerical stability
+            estimated_noise = estimated_noise + 1e-6
+        
         if not self.training:  # 测试模式
             y = F.interpolate(y, size=(256, 256), mode='bilinear', align_corners=False)
 
@@ -213,16 +247,22 @@ class EDDUN(nn.Module):
             # 2.EGIM模块
             t_ls.append(v_init[i] - self.delta_2[i] * (v_init[i] - x_init[i]))
             v_init.append(self.EGIM(t_ls[i], f_init[i + 1]))
-            # 3.IGRM模块
-            # print("x_init的shape", x_init[i].shape)  # [1,3,50,50]
-            # print("y的shape", y.shape)  # [1,3,50,50]
-            # print("conv_down的shape", self.conv_down(x_init[i]).shape)  # [1,3,25,25]
-            # print("conv_up的shape", self.conv_up(self.conv_down(x_init[i])).shape)  # [1,3,50,50]
+            # 3.IGRM模块 with noise-aware data fidelity
             temp_size = self.conv_down(x_init[i]).shape[2:]
             temp_y = F.interpolate(y, size=temp_size, mode='bilinear', align_corners=False)
-            # print("temp_y的shape:", temp_y.shape)  # [1,3,25,25]
+            
+            # Compute data fidelity term
+            data_fidelity = self.conv_up(self.conv_down(x_init[i]) - temp_y)
+            
+            # Apply noise-aware weighting if degradation estimation is enabled
+            if self.use_degradation and estimated_noise is not None:
+                # Scale data fidelity by inverse of noise level (higher noise = lower weight)
+                noise_weight = self.noise_reg_weight / (estimated_noise.view(-1, 1, 1, 1) + 1e-6)
+                noise_weight = torch.clamp(noise_weight, 0.1, 10.0)  # Prevent extreme values
+                data_fidelity = data_fidelity * noise_weight
+            
             r_ls.append(x_init[i] - self.delta_3[i] * (
-                    self.conv_up(self.conv_down(x_init[i]) - temp_y) + self.mu[i] * (v_init[i + 1] - x_init[i])))
+                    data_fidelity + self.mu[i] * (v_init[i + 1] - x_init[i])))
             x_init.append(self.IGRM(r_ls[i], v_init[i + 1]))
             # 上采样输出
             x_init[i + 1] = F.interpolate(x_init[i + 1], size=input_target, mode='bilinear',
@@ -232,8 +272,12 @@ class EDDUN(nn.Module):
             f_init[i + 1] = F.interpolate(f_init[i + 1], size=input_target, mode='bilinear',
                                           align_corners=False)
             y = F.interpolate(y, size=y_target, mode='bilinear', align_corners=False)
-            # #-----------------------RPM module------------------------------------------------------
-            blurred_x = self.blur(x_init[i + 1])  # x进行模糊核处理
+            # #-----------------------RPM module with degradation-aware blur--------------------------
+            # Use estimated blur kernel if available, otherwise use fixed blur
+            if self.use_degradation and estimated_kernel is not None:
+                blurred_x = self.deg_aware_conv(x_init[i + 1], estimated_kernel)
+            else:
+                blurred_x = self.blur(x_init[i + 1])  # x进行模糊核处理
             # 下采样处理之后的模糊核到和y一样的大小
             down_out = F.interpolate(blurred_x, size=target_size, mode='bilinear',
                                      align_corners=False)
@@ -257,6 +301,13 @@ class EDDUN(nn.Module):
             
             # x[i + 1] = x
 
+        if return_degradation and self.use_degradation:
+            deg_params = {
+                'blur_kernel': estimated_kernel,
+                'noise_level': estimated_noise
+            }
+            return x, deg_params
+        
         return x
 
 

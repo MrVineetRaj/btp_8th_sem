@@ -24,6 +24,11 @@ class Loss(nn.modules.loss._Loss):
         self.log = torch.Tensor()  # loss-log   #用于存储训练和验证损失
         device = torch.device('cpu' if args.cpu else 'cuda')
 
+        # Degradation loss settings
+        self.use_degradation = getattr(args, 'use_degradation', False)
+        self.deg_loss_weight = getattr(args, 'deg_loss_weight', 0.1)
+        self.degradation_loss = None
+        
         # step-1 筹备loss用于存储定制loss函数列表
         for loss in args.loss.split('+'):
             # 获取weight，loss_type
@@ -48,6 +53,18 @@ class Loss(nn.modules.loss._Loss):
                     args,
                     loss_type
                 )
+            # DEG - Degradation estimation loss
+            elif loss_type == 'DEG':
+                module = import_module('loss.degradation')
+                loss_function = getattr(module, 'DegradationLoss')(
+                    kernel_weight=1.0,
+                    noise_weight=0.1
+                )
+                self.degradation_loss = loss_function
+            # Charbonnier loss
+            elif loss_type == 'Charbonnier':
+                module = import_module('loss.degradation')
+                loss_function = getattr(module, 'CharbonnierLoss')()
             # 整理到loss列表中
             self.loss.append({
                 'type': loss_type,
@@ -82,17 +99,34 @@ class Loss(nn.modules.loss._Loss):
         if args.load != '.':    #.表示当前目录，如果不是当前目录就是需要加载指定目录下的预训练模型
             self.load(ckp.dir, cpu=args.cpu)
 
-    def forward(self, sr, hr):
+    def forward(self, sr, hr, deg_params=None):
         """计算多loss函数加权loss
         :param sr: 超分辨率后图像
         :param hr: 原始高分辨率图像
+        :param deg_params: 可选的降质参数字典，包含:
+            - 'pred_kernel': 预测的模糊核
+            - 'pred_noise': 预测的噪声水平
+            - 'gt_kernel': 真实模糊核
+            - 'gt_noise': 真实噪声水平
         :return: 混合加权loss
         """
         losses = []
         # 遍历所有loss的函数，并且记录effective_loss到losses列表中
         for i, l in enumerate(self.loss):
             if l['function'] is not None:
-                loss = l['function'](sr, hr)  # 将sr与hr带入loss函数，获取loss
+                # Handle degradation loss specially
+                if l['type'] == 'DEG':
+                    if deg_params is not None and all(k in deg_params for k in ['pred_kernel', 'pred_noise', 'gt_kernel', 'gt_noise']):
+                        loss = l['function'](
+                            deg_params['pred_kernel'],
+                            deg_params['pred_noise'],
+                            deg_params['gt_kernel'],
+                            deg_params['gt_noise']
+                        )
+                    else:
+                        continue  # Skip DEG loss if params not available
+                else:
+                    loss = l['function'](sr, hr)  # 将sr与hr带入loss函数，获取loss
                 effective_loss = l['weight'] * loss  # effective_loss = weight * loss
                 losses.append(effective_loss)
                 # item 将一个零维张量effective_loss转换成浮点数，将effective_loss记录到log中

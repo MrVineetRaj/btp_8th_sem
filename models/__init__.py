@@ -46,7 +46,7 @@ class Model(nn.Module):
 
         # 前向传播
 
-    def forward(self, x, idx_scale):
+    def forward(self, x, idx_scale=0, return_degradation=False):
         self.idx_scale = idx_scale  # 输入数据放大尺度
         target = self.get_model()  # 获得模型对象
         if hasattr(target, 'set_scale'):  # 检查当前target对象中是否有set_scale这个属性
@@ -72,6 +72,8 @@ class Model(nn.Module):
             return self.forward_chop(x)
         # 3.当前处于训练阶段，那么对应的这两个if语句都不会被执行，而只是简单的返回原本的模型
         else:
+            if return_degradation:
+                return self.model(x, return_degradation=True)
             return self.model(x)
 
     def get_model(self):

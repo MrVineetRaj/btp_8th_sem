@@ -73,6 +73,55 @@ class NonLocalBlock(nn.Module):
         return output
 
 
+class MultiHeadSpatialAttention(nn.Module):
+    """Multi-Head Self-Attention for 2D feature maps.
+    
+    Replaces LSTM with parallel attention mechanism for better efficiency
+    and spatial structure preservation.
+    """
+    def __init__(self, in_channels, num_heads=4):
+        super(MultiHeadSpatialAttention, self).__init__()
+        
+        self.in_channels = in_channels
+        self.num_heads = num_heads
+        self.head_dim = in_channels // num_heads
+        self.inner_dim = self.head_dim * num_heads
+        
+        # Q, K, V projections using 1x1 convolutions
+        self.to_qkv = nn.Conv2d(in_channels, self.inner_dim * 3, kernel_size=1, bias=False)
+        
+        # Output projection
+        self.to_out = nn.Sequential(
+            nn.Conv2d(self.inner_dim, in_channels, kernel_size=1),
+            nn.BatchNorm2d(in_channels)
+        )
+        
+        self.scale = self.head_dim ** -0.5
+        
+    def forward(self, x):
+        b, c, h, w = x.shape
+        
+        # Generate Q, K, V
+        qkv = self.to_qkv(x)  # (b, inner_dim*3, h, w)
+        qkv = qkv.reshape(b, 3, self.num_heads, self.head_dim, h * w)
+        qkv = qkv.permute(1, 0, 2, 4, 3)  # (3, b, heads, h*w, head_dim)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        
+        # Attention: softmax(Q @ K^T / sqrt(d)) @ V
+        attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale  # (b, heads, h*w, h*w)
+        attn = F.softmax(attn, dim=-1)
+        
+        # Apply attention to values
+        out = torch.matmul(attn, v)  # (b, heads, h*w, head_dim)
+        
+        # Reshape back to spatial
+        out = out.permute(0, 1, 3, 2)  # (b, heads, head_dim, h*w)
+        out = out.reshape(b, self.inner_dim, h, w)
+        
+        # Output projection with residual connection
+        return x + self.to_out(out)
+
+
 class EGIM(nn.Module):
     def __init__(self):
         super(EGIM, self).__init__()
