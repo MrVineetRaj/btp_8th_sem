@@ -122,7 +122,7 @@ parser.add_argument('--skip_threshold', type=float, default='1e10',  # Skip batc
                     help='skipping batch that has large error')
 
 # Log settings
-parser.add_argument('--pre_train', type=str, default='experiment/SR_X2_BI/model/model_best.pt',  # Pretrained model path
+parser.add_argument('--pre_train', type=str, default='.',  # Pretrained model path (. means no pretrain)
                     help='pre-trained model directory')
 parser.add_argument('--save', type=str, default='../experiment/SR_X2_BI',  # Filename for saving
                     help='file name to save')
