@@ -65,7 +65,7 @@ parser.add_argument('--deg_loss_weight', type=float, default=0.1,
                     help='Weight for degradation estimation loss')
 
 # Model settings
-parser.add_argument('--model', default='EPGDUNCBP',  # Model name
+parser.add_argument('--model', default='EPGDUN',  # Model name
                     help='model name')
 
 parser.add_argument('--act', type=str, default='relu',  # Activation function
