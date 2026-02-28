@@ -8,8 +8,7 @@ import mydata.common as common
 
 
 class SRData(data.Dataset):
-    """ SR数据集接口，建立数据集需要实现这个接口
-    """
+    """SR dataset interface, datasets need to implement this interface."""
 
     def __init__(self, args, train=True, benchmark=False):
         self.args = args
@@ -23,8 +22,7 @@ class SRData(data.Dataset):
         self._set_filesystem(args.dir_data)
 
         def _load_bin():
-            """ 载入二进制文件images_hr，images_lr
-            """
+            """Load binary files images_hr, images_lr"""
             self.images_hr = np.load(self._name_hrbin())
             self.images_lr = [
                 np.load(self._name_lrbin(s))
@@ -34,7 +32,7 @@ class SRData(data.Dataset):
         if args.ext == 'img' or benchmark:
             self.images_hr, self.images_lr = self._scan()
 
-        elif args.ext.find('sep') >= 0:  # seperated binary files
+        elif args.ext.find('sep') >= 0:  # Separated binary files
             self.images_hr, self.images_lr = self._scan()
             if args.ext.find('reset') >= 0:
                 print('Preparing seperated binary files')
@@ -94,15 +92,15 @@ class SRData(data.Dataset):
         raise NotImplementedError
 
     def _name_hrbin(self):
-        """返回hr文件的load/save路径"""
+        """Return HR file load/save path"""
         raise NotImplementedError
 
     def _name_lrbin(self, scale):
-        """返沪lr文件的load/save路径"""
+        """Return LR file load/save path"""
         raise NotImplementedError
 
     def __getitem__(self, idx):
-        lr, hr, filename = self._load_file(idx)  # 获取对应下标的数据集
+        lr, hr, filename = self._load_file(idx)  # Get data at index
         lr, hr, deg_params = self._get_patch(lr, hr)
         lr, hr = common.set_channel([lr, hr], self.args.n_colors)
         lr_tensor, hr_tensor = common.np2Tensor([lr, hr], self.args.rgb_range)
@@ -117,14 +115,14 @@ class SRData(data.Dataset):
         return lr_tensor, hr_tensor, filename, None, None
 
     def __len__(self):
-        """返回数据集的数量"""
+        """Return dataset size"""
         return len(self.images_hr)
 
     def _get_index(self, idx):
         return idx
 
     def _load_file(self, idx):
-        """加载对应下标的数据"""
+        """Load data at index"""
         idx = self._get_index(idx)
         lr = self.images_lr[self.idx_scale][idx]
         hr = self.images_hr[idx]
@@ -150,20 +148,20 @@ class SRData(data.Dataset):
         deg_params = None
         
         if self.train:
-            lr, hr = common.get_patch(  # 裁剪
+            lr, hr = common.get_patch(  # Crop patches
                 lr, hr, patch_size, scale, multi_scale=multi_scale
             )
-            lr, hr = common.augment([lr, hr])  # 图片增墒
+            lr, hr = common.augment([lr, hr])  # Image augmentation
             
             # Apply realistic degradation augmentation if enabled
             if self.use_degradation:
                 lr, deg_params = common.add_degradation(lr, self.args)
                 self._current_deg_params = deg_params
             
-            lr = common.add_noise(lr, self.args.noise)  # 增加噪音
+            lr = common.add_noise(lr, self.args.noise)  # Add noise
         else:
             ih, iw = lr.shape[0:2]
-            hr = hr[0:ih * scale, 0:iw * scale]  # 简单裁切
+            hr = hr[0:ih * scale, 0:iw * scale]  # Simple crop
 
         return lr, hr, deg_params
 

@@ -2,75 +2,74 @@ import os
 from importlib import import_module
 
 import torch
-import torch.nn as nn  # 神经网络模块
+import torch.nn as nn  # Neural network module
 
 
 class Model(nn.Module):
-    # 构造函数，进行模型的初始化
-    def __init__(self, args, ckp):  # ckp是一个checkpoint对象，包含了训练到哪一个epoch以及训练过程中的准确度和其他指标
+    # Constructor for model initialization
+    def __init__(self, args, ckp):  # ckp is a checkpoint object containing epoch and metrics
         super(Model, self).__init__()
         print('Making model...')
 
         self.scale = args.scale
         self.idx_scale = 0
-        self.self_ensemble = args.self_ensemble  # 是否采用自集成技术
-        self.chop = args.chop  # 是否采用分块技术
-        self.precision = args.precision  # 是否采用混合精度，如果为True则采用混合精度
+        self.self_ensemble = args.self_ensemble  # Whether to use self-ensemble technique
+        self.chop = args.chop  # Whether to use patch-based processing
+        self.precision = args.precision  # Whether to use mixed precision
         self.cpu = args.cpu
         self.device = torch.device('cpu' if args.cpu else 'cuda')
-        self.n_GPUs = args.n_GPUs  # 用于指定GPU的个数
+        self.n_GPUs = args.n_GPUs  # Number of GPUs
         self.save_models = args.save_models
 
-        # 加载对应的整体模型
+        # Load the overall model
         module = import_module('models.' + args.model.lower())
-        # 调用对应的make_model函数返回整体的模型，并进行初始化，然后把他加载到GPU上进行训练,
-        # 最后的实例化对象赋值给self.model参数
-        # 1.这是原本加载过来的模型
+        # Call make_model to return the model, initialize it, and load to GPU
+        # The instantiated object is assigned to self.model
+        # 1. Original loaded model
         self.model = module.make_model(args).to(self.device)
-        # 2.这是是否缩减精度为半精度后的模型
-        if args.precision == 'half': self.model.half()  # 精度为半精度，GPU支持半精度16位，可提高计算速度
-        # 3.这是是否对模型进行并行化处理后的模型
+        # 2. Model after optional half precision reduction
+        if args.precision == 'half': self.model.half()  # Half precision 16-bit for faster GPU computation
+        # 3. Model after optional parallelization
         if not args.cpu and args.n_GPUs > 1:
-            # 对模型进行并行化处理，最后处理好的并行化模型可直接用于后续训练和测试
+            # Parallelize the model for subsequent training and testing
             self.model = nn.DataParallel(self.model, range(args.n_GPUs))
 
-        # 调用自定义的load函数用于加载已保存的权重模型
+        # Load saved model weights using custom load function
         self.load(
-            ckp.dir,  # 表示模型保存的路径
-            pre_train=args.pre_train,  # 如果为TRUE表示从预训练模型中加载权重
-            resume=args.resume,  # 如果为TRUE则从最近一次检查点中恢复模型
-            cpu=args.cpu  # 是否将模型加载到CPU上
+            ckp.dir,  # Model save path
+            pre_train=args.pre_train,  # If True, load weights from pretrained model
+            resume=args.resume,  # If True, resume from latest checkpoint
+            cpu=args.cpu  # Whether to load model to CPU
         )
         if args.print_model:
             print(self.model)
 
-        # 前向传播
+        # Forward propagation
 
     def forward(self, x, idx_scale=0, return_degradation=False):
-        self.idx_scale = idx_scale  # 输入数据放大尺度
-        target = self.get_model()  # 获得模型对象
-        if hasattr(target, 'set_scale'):  # 检查当前target对象中是否有set_scale这个属性
+        self.idx_scale = idx_scale  # Input data scale factor
+        target = self.get_model()  # Get model object
+        if hasattr(target, 'set_scale'):  # Check if target has set_scale attribute
             target.set_scale(idx_scale)
-        # self_ensemble是否进行自我集成，也就是对输入图像进行多次缩放和SR重构，
-        # 然后取平均值作为最终输出，从而减少图像中的伪像和噪声
-        # self.training表示当前不处于模型的训练模式，也就是测试模式，
-        # 1.因为要自我集成，所以对应的forward_x8就是自我集成版本的forward函数
-        if self.self_ensemble and not self.training:    # 测试阶段
-            if self.chop:  # 需要砍掉图像的边缘进行多次局部缩放
+        # self_ensemble: perform self-ensemble by scaling and reconstructing input image multiple times
+        # then averaging to reduce artifacts and noise
+        # self.training indicates not in training mode (i.e., testing mode)
+        # 1. For self-ensemble, forward_x8 is the ensemble version of forward
+        if self.self_ensemble and not self.training:    # Testing phase
+            if self.chop:  # Need to chop image edges for multiple local scalings
                 forward_function = self.forward_chop
             else:
                 forward_function = self.model.forward
-            # self.forward_x8实现自我集成操作，将输入的LR图像进行
-            # 水平翻转、垂直翻转、对角线反转、水平和垂直方向镜像翻转，
-            # 然后分别进行前向计算，最后的结果取平均值
+            # forward_x8 implements self-ensemble by:
+            # horizontal flip, vertical flip, diagonal flip, horizontal+vertical mirror flip
+            # then forward computation and averaging results
             return self.forward_x8(x, forward_function)
-        # self.ensemble和self.chop的虽然都是集成方法，但是区别是前者是基于不同的训
-        # 练数据集来构建集成模型的，而后者是基于同一个训练集进行不同的裁剪方式来构建
-        # 集成模型的
-        # 2.因为要通过chop来进行集成，所以对应的forward_chop就是chop版本的forward函数
+        # self.ensemble and self.chop are both ensemble methods, but:
+        # former uses different training datasets, latter uses different cropping on same dataset
+        # 2. For chop ensemble, forward_chop is the chop version of forward
         elif self.chop and not self.training:
             return self.forward_chop(x)
-        # 3.当前处于训练阶段，那么对应的这两个if语句都不会被执行，而只是简单的返回原本的模型
+        # 3. In training phase, neither if is executed, simply return model output
         else:
             if return_degradation:
                 return self.model(x, return_degradation=True)
@@ -80,15 +79,15 @@ class Model(nn.Module):
         if self.n_GPUs == 1:
             return self.model
         else:
-            # 当GPU个数大于1的时候，对应的self.model是一个nn.DataParallel对象，
-            # 也就是进行并行计算的实例对象，此时需要再调用module才是实际的模型对象
+            # When GPUs > 1, self.model is nn.DataParallel object
+            # Need to access .module for actual model object
             return self.model.module
 
-    def state_dict(self, **kwargs):  # 保存模型状态
+    def state_dict(self, **kwargs):  # Save model state
         target = self.get_model()
         return target.state_dict(**kwargs)
 
-    def save(self, apath, epoch, is_best=False):  # 其中apath表示保存路径的根目录
+    def save(self, apath, epoch, is_best=False):  # apath is save path root directory
         target = self.get_model()
         # torch.save(
         #    target.state_dict(),
@@ -107,8 +106,8 @@ class Model(nn.Module):
             )
 
     def load(self, apath, pre_train='.', resume=-1, cpu=False):
-        # 其中pre_train是可选择的预训练模型位置，对应的.表示当前路径，也就是不加载任何预训练模型
-        # resume是指定加载的模型状态（-1最近一次，0预训练模型，>0历史模型状态
+        # pre_train is optional pretrained model path, . means current path (no pretrained model)
+        # resume specifies model state to load: -1=latest, 0=pretrained, >0=historical state
         if cpu:
             kwargs = {'map_location': lambda storage, loc: storage}
         else:
@@ -123,13 +122,12 @@ class Model(nn.Module):
                 strict=False
             )
         elif resume == 0:
-            if pre_train != '.':  # pre_train!=.表示不是当前路径，说明是有预训练模型的
+            if pre_train != '.':  # pre_train != . means pretrained model exists
                 print('Loading model from {}'.format(pre_train))
                 self.get_model().load_state_dict(
                     torch.load(pre_train, **kwargs),
                     strict=False
-                    # 表示在加载预训练模型状态时，可以忽略模型架构不匹配等问题，从而获得更好
-                    # 的预测效果
+                    # strict=False allows loading with architecture mismatches for better predictions
                 )
         else:
             self.get_model().load_state_dict(
@@ -140,29 +138,29 @@ class Model(nn.Module):
                 strict=False
             )
 
-    def forward_chop(self, x, shave=10, min_size=160000):  # shave是预留的边缘像素的大小
+    def forward_chop(self, x, shave=10, min_size=160000):  # shave is reserved edge pixel size
         scale = self.scale[self.idx_scale]
         n_GPUs = min(self.n_GPUs, 4)
-        b, c, h, w = x.size()  # batch_size,channel,height,width
+        b, c, h, w = x.size()  # batch_size, channel, height, width
         h_half, w_half = h // 2, w // 2
         h_size, w_size = h_half + shave, w_half + shave
         lr_list = [
-            x[:, :, 0:h_size, 0:w_size],  # 左上部分
-            x[:, :, 0:h_size, (w - w_size):w],  # 右上部分
-            x[:, :, (h - h_size):h, 0:w_size],  # 左下部分
-            x[:, :, (h - h_size):h, (w - w_size):w]]  # 右下部份
+            x[:, :, 0:h_size, 0:w_size],  # Top-left part
+            x[:, :, 0:h_size, (w - w_size):w],  # Top-right part
+            x[:, :, (h - h_size):h, 0:w_size],  # Bottom-left part
+            x[:, :, (h - h_size):h, (w - w_size):w]]  # Bottom-right part
 
-        if w_size * h_size < min_size:  # 当切分后的图片小于最小设置的值，就可以使用模型直接进行超分辨率处理
-            sr_list = []  # 用于存储处理后的图片
+        if w_size * h_size < min_size:  # If cropped image is smaller than min, process directly
+            sr_list = []  # Store processed images
             for i in range(0, 4, n_GPUs):
-                # 将每一块分好的图像按照dim=0，即batch的维度，进行拼接，具体的batch大小为n_GPUS
+                # Concatenate image patches along batch dimension (dim=0), batch size = n_GPUs
                 lr_batch = torch.cat(lr_list[i:(i + n_GPUs)], dim=0)
-                # 将每一个batch的图像传入模型进行处理
+                # Pass each batch through model
                 sr_batch = self.model(lr_batch)
-                # 因为之前是按照batch维度将对应的图像块拼接起来的，现在是将拼接起来的处理好的图像batch再分开
+                # Split processed batch back into individual patches
                 sr_list.extend(sr_batch.chunk(n_GPUs, dim=0))
-        else:  # 因为对裁剪的大小并不小于预设值因此，重新递归调用forward_chop函数，
-            # 其中反斜杠是对应的所有的处理过的图像块拼接在一起
+        else:  # If cropped size >= preset, recursively call forward_chop
+            # Backslash concatenates all processed patches
             sr_list = [
                 self.forward_chop(patch, shave=shave, min_size=min_size) \
                 for patch in lr_list
@@ -173,8 +171,8 @@ class Model(nn.Module):
         h_size, w_size = scale * h_size, scale * w_size
         shave *= scale
 
-        output = x.new(b, c, h, w)  # 新建一个和原来的图像大小相同的图像，方便下文的像素的填充
-        # 对应将第一个大的图像块的每一个小像素块填充到对应的输出图像的左上角的每一个小像素块上，下同
+        output = x.new(b, c, h, w)  # Create new image same size as original for pixel filling
+        # Fill each small pixel block from first large patch to top-left of output
         output[:, :, 0:h_half, 0:w_half] \
             = sr_list[0][:, :, 0:h_half, 0:w_half]
         output[:, :, 0:h_half, w_half:w] \
@@ -189,28 +187,28 @@ class Model(nn.Module):
     def forward_x8(self, x, forward_function):
         def _transform(v, op):
             if self.precision != 'single': v = v.float()
-            # 将不是单精度的张量转化为单精度张量
-            # 将转换好类型的数据从GPU上复制到内存，并转化为numpy数组
+            # Convert non-single precision tensor to single precision
+            # Copy converted data from GPU to memory and convert to numpy array
             v2np = v.data.cpu().numpy()
-            if op == 'v':  # 垂直翻转
+            if op == 'v':  # Vertical flip
                 tfnp = v2np[:, :, :, ::-1].copy()
-            elif op == 'h':  # 水平翻转
+            elif op == 'h':  # Horizontal flip
                 tfnp = v2np[:, :, ::-1, :].copy()
-            elif op == 't':  # 转置
+            elif op == 't':  # Transpose
                 tfnp = v2np.transpose((0, 1, 3, 2)).copy()
 
             ret = torch.Tensor(tfnp).to(self.device)
-            if self.precision == 'half': ret = ret.half()  # 转化为半精度浮点类型
+            if self.precision == 'half': ret = ret.half()  # Convert to half precision float
 
             return ret
 
-        # 调用自己函数中定义过的transform函数对原始的图像数据集进行一系列翻转操作
+        # Apply transform functions defined above for series of flip operations
         lr_list = [x]
         for tf in 'v', 'h', 't':
             lr_list.extend([_transform(t, tf) for t in lr_list])
-        # 然后调用前向传播函数进行SR处理
+        # Call forward for SR processing
         sr_list = [forward_function(aug) for aug in lr_list]
-        # 根据不同的索引值，对于处理过的SR图像进行垂直水平的旋转操作
+        # Apply vertical/horizontal rotations to processed SR images based on index
         for i in range(len(sr_list)):
             if i > 3:
                 sr_list[i] = _transform(sr_list[i], 't')
@@ -220,6 +218,6 @@ class Model(nn.Module):
                 sr_list[i] = _transform(sr_list[i], 'v')
 
         output_cat = torch.cat(sr_list, dim=0)
-        output = output_cat.mean(dim=0, keepdim=True)  # 对处理过的所有SR图像取平均值
+        output = output_cat.mean(dim=0, keepdim=True)  # Average all processed SR images
 
         return output

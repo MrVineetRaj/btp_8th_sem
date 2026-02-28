@@ -8,7 +8,7 @@ class ResBlock(nn.Module):
 
         m = []
         for i in range(2):
-            # Conv2d的输入输出大小分别是前两个参数
+            # Conv2d input/output sizes are first two parameters
             m.append(nn.Conv2d(n_feat, n_feat, kernel_size, padding=(kernel_size // 2), bias=bias))
             if bn:
                 m.append(nn.BatchNorm2d(n_feat))
@@ -19,7 +19,7 @@ class ResBlock(nn.Module):
         self.res_scale = res_scale
 
     def forward(self, x):  # x(n_feat) -> res(n_feat)
-        res = self.body(x).mul(self.res_scale)  # 所有元素根据残差比例缩小
+        res = self.body(x).mul(self.res_scale)  # Scale all elements by residual scale
         res += x
         return res
 
@@ -39,10 +39,10 @@ class EncodingBlock(nn.Module):
         self.down = nn.Conv2d(128, 64, kernel_size=3, stride=2, padding=3 // 2)
         self.act = nn.ReLU()
 
-    def forward(self, input):  # input -> f_e(128),down(64)
+    def forward(self, input):  # input -> f_e(128), down(64)
         f_e = self.body(input)
         down = self.act(self.down(f_e))
-        return f_e, down  # f_e是包含更多更全面的高级特征，而down是粗糙的特征，是f_e降维之后的特征
+        return f_e, down  # f_e contains richer high-level features, down is coarse downsampled features
 
 
 class EncodingBlockEnd(nn.Module):
@@ -108,16 +108,16 @@ class DecodingBlock(nn.Module):
         self.act = nn.ReLU()
         self.body = nn.Sequential(*body)
 
-    def forward(self, input, map):  # input(128),map(128) -> out(256)
-        # 保证逆向卷积出来的shape和map一致
+    def forward(self, input, map):  # input(128), map(128) -> out(256)
+        # Ensure transposed conv output shape matches map shape
         up = self.up(input, output_size=[input.shape[0], input.shape[1], map.shape[2], map.shape[3]])
         up = self.act(up)
-        out = torch.cat((up, map), 1)  # 在channel 纬度上
+        out = torch.cat((up, map), 1)  # Concatenate along channel dimension
         out = self.body(out)
         return out
 
 
-# 最后一个decoding和之前的decoding的唯一区别就是结尾处多加了一个卷积层用来提高图像的通道数
+# The only difference from previous decoding is an extra conv layer at the end to increase channels
 class DecodingBlockEnd(nn.Module):
     def __init__(self, ch_in):
         super(DecodingBlockEnd, self).__init__()
@@ -133,10 +133,10 @@ class DecodingBlockEnd(nn.Module):
         self.act = nn.ReLU()
         self.body = nn.Sequential(*body)
 
-    def forward(self, input, map):  # input(128),map(128) -> out(64)
-        # 保证逆向卷积出来的shape和map一致
+    def forward(self, input, map):  # input(128), map(128) -> out(64)
+        # Ensure transposed conv output shape matches map shape
         up = self.up(input, output_size=[input.shape[0], input.shape[1], map.shape[2], map.shape[3]])
         out = self.act(up)
-        out = torch.cat((out, map), 1)  # 在channel 纬度上
+        out = torch.cat((out, map), 1)  # Concatenate along channel dimension
         out = self.body(out)
         return out

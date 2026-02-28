@@ -5,24 +5,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class PFM(nn.Module):  # 并行交叉融合模块
+class PFM(nn.Module):  # Parallel cross-fusion module
     def __init__(self):
         super(PFM, self).__init__()
 
-        self.convf = nn.Conv2d(8, 32, kernel_size=3, padding=1)  # 将f映射为32通道
-        self.convh = nn.Conv2d(3, 32, kernel_size=3, padding=1)  # 将h映射为32通道
+        self.convf = nn.Conv2d(8, 32, kernel_size=3, padding=1)  # Map f to 32 channels
+        self.convh = nn.Conv2d(3, 32, kernel_size=3, padding=1)  # Map h to 32 channels
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         self.convf_1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
         self.convh_1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        # self.gate = nn.LSTM(64, 32, batch_first=True)  # 选取互补特征
+        # self.gate = nn.LSTM(64, 32, batch_first=True)  # Select complementary features
 
     def forward(self, h, f):
-        # print("f的shape", f.shape)   # [1,8,400,400]
-        f = F.relu(self.convf(f))  # 将f映射为32通道
+        # print("f shape", f.shape)   # [1,8,400,400]
+        f = F.relu(self.convf(f))  # Map f to 32 channels
         # print(f.shape)
-        h = F.relu(self.convh(h))  # 将h映射为32通道
-        f_s = self.sigmoid(f)  # 以元素方式添加并Sigmoid激活
+        h = F.relu(self.convh(h))  # Map h to 32 channels
+        f_s = self.sigmoid(f)  # Element-wise addition with Sigmoid activation
         h_s = self.sigmoid(h)
         h_m = h * f_s
         f_m = f * h_s
@@ -32,9 +32,9 @@ class PFM(nn.Module):  # 并行交叉融合模块
         h = self.convh_1(h_p)
         f = self.sigmoid(f)
         h = self.tanh(h)
-        # f, _ = self.gate(f.unsqueeze(0))  # 使用门机制选取互补特征
+        # f, _ = self.gate(f.unsqueeze(0))  # Use gating mechanism to select complementary features
         final = f * h
-        return final  # 32 channel
+        return final  # 32 channels
 
 
 class NonLocalBlock(nn.Module):
@@ -62,8 +62,8 @@ class NonLocalBlock(nn.Module):
 
         f_div_c = f_div_c.permute(0, 2, 1)
         g = g.permute(0, 2, 1)
-        # print("f_div_c的shape:", f_div_c.shape)
-        # print("g的shape:", g.shape)
+        # print("f_div_c shape:", f_div_c.shape)
+        # print("g shape:", g.shape)
         y = torch.matmul(f_div_c, g)
 
         y = y.permute(0, 2, 1).contiguous()
@@ -145,24 +145,24 @@ class EGIM(nn.Module):
         bb_1 = self.baseBlock(pfm)
         output_up = self.nonlocalblock(bb_1)
         # -----------LSTM-------------------------------------------------------------------------
-        # 先获取输入LSTM图像的各个维度的信息
+        # Get dimensions of input LSTM image
         # batch_size, channel, height, width = bb_1.shape
         # # print(bb_1.shape)
         # target_size = bb_1.shape[2:]
-        # # 设置特征的维度，因为输入是个序列，就是对应的这个序列的长度，作为LSTM初始化的输入参数
+        # # Set feature dimension (sequence length for LSTM initialization)
         # input_size = channel * width
-        # # 初始化参数列表，对应的第二个参数是hidden_size，第三个参数是需要的LSTM的个数
+        # # Initialize parameter list, second param is hidden_size, third is num LSTM layers
         # lstm = nn.LSTM(input_size, 256, 2)
-        # # 图像的高度或者宽度时间步的维度
+        # # Image height or width as time step dimension
         # seq_dim = height
-        # # 转换维度的顺序
+        # # Permute dimensions
         # bb_1_permuted = bb_1.permute(0, 2, 1, 3)
         # bb_1_reshaped = bb_1_permuted.reshape(batch_size * seq_dim, channel, width)
-        # # 将图像重塑为LSTM的输入形状
+        # # Reshape image to LSTM input shape
         # seq_length = batch_size * seq_dim
         # input_size = channel * width
         # lstm_input = bb_1_reshaped.reshape(seq_length, batch_size, input_size)
-        # lstm = lstm.to(lstm_input.device)  # 把所有参数都转换成和输入图像一个处理设备上进行
+        # lstm = lstm.to(lstm_input.device)  # Move all params to same device as input
         # output, _ = lstm(lstm_input)
         # # print(output.shape)   # [width,1,256]
         # # print("test_only", test_only)
@@ -177,7 +177,7 @@ class EGIM(nn.Module):
         #     output_shape = math.sqrt(output_shape)
         #     output_shape = int(output_shape)
         # else:
-        #     # print("执行了else分支")
+        #     # print("Executed else branch")
         #     output_shape = 20
         # output_reshaped = output.view(batch_size, channel, output_shape, output_shape)
         # # print(output_reshaped.shape)

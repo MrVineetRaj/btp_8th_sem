@@ -170,7 +170,7 @@ def calc_psnr(sr, hr, scale, rgb_range, benchmark=False):
 
 
 def make_optimizer(args, my_model):
-    # 从model中的参数中，过滤可以进行训练的参数
+    # Filter trainable parameters from model
     trainable = filter(
         lambda x: x.requires_grad, my_model.parameters()
     )
@@ -201,14 +201,14 @@ def make_scheduler(args, my_optimizer):
             step_size=args.lr_decay,
             gamma=args.gamma
         )
-    elif args.decay_type.find('step') >= 0:  # 包含step但是不仅限于step，说明是个多布梯度下降
-        milestones = args.decay_type.split('_')  # 将参数以_分开
-        milestones.pop(0)  # 去掉开头的元素，也即step，留下后面的数字
-        milestones = list(map(lambda x: int(x), milestones))  # 将数字转化为整数
+    elif args.decay_type.find('step') >= 0:  # Contains 'step' but not only 'step', multi-step decay
+        milestones = args.decay_type.split('_')  # Split by '_'
+        milestones.pop(0)  # Remove first element ('step'), keep numbers
+        milestones = list(map(lambda x: int(x), milestones))  # Convert to integers
         scheduler = lrs.MultiStepLR(
             my_optimizer,
             milestones=milestones,
             gamma=args.gamma
         )
-        scheduler.last_epoch += -1  # 调度器调度完之后减1，确保和模型的训练轮数对应
+        scheduler.last_epoch += -1  # Adjust to match training epoch count
     return scheduler
