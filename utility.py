@@ -100,7 +100,11 @@ class checkpoint():
         self.log_file.close()
 
     def plot_psnr(self, epoch):
-        axis = np.linspace(1, epoch, epoch)
+        # Use actual log length instead of epoch to avoid dimension mismatch
+        n_epochs = len(self.log)
+        if n_epochs == 0:
+            return
+        axis = np.linspace(1, n_epochs, n_epochs)
         label = 'SR on {}'.format(self.args.data_test)
         fig = plt.figure()
         plt.title(label)
