@@ -171,7 +171,11 @@ class Loss(nn.modules.loss._Loss):
         :param apath: File storage path
         :param epoch: epoch
         """
-        axis = np.linspace(1, epoch, epoch)
+        # Use actual log length instead of epoch to avoid dimension mismatch
+        n_epochs = len(self.log)
+        if n_epochs == 0:
+            return
+        axis = np.linspace(1, n_epochs, n_epochs)
         for i, l in enumerate(self.loss):  # Iterate loss function list
             label = '{} Loss'.format(l['type'])
             fig = plt.figure()
