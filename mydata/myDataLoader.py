@@ -21,13 +21,12 @@ class MSDataLoader(DataLoader):
                  collate_fn=default_collate, pin_memory=False, drop_last=False,
                  timeout=0, worker_init_fn=None):
         
-        self.scale = args.scale
-        self._ms_dataset = dataset  # Store reference for multi-scale handling
+        scale = args.scale
         
         # For multi-scale training, we need single-threaded loading
         # so that set_scale() is visible to __getitem__
         num_workers = args.n_threads
-        if len(self.scale) > 1 and hasattr(dataset, 'train') and dataset.train:
+        if len(scale) > 1 and hasattr(dataset, 'train') and dataset.train:
             num_workers = 0
         
         super(MSDataLoader, self).__init__(
@@ -36,10 +35,21 @@ class MSDataLoader(DataLoader):
             num_workers=num_workers, collate_fn=collate_fn,
             pin_memory=pin_memory, drop_last=drop_last,
             timeout=timeout, worker_init_fn=worker_init_fn)
+        
+        # Store custom attributes using object.__setattr__ to bypass DataLoader's restrictions
+        object.__setattr__(self, '_scale', scale)
+        object.__setattr__(self, '_ms_dataset', dataset)
+
+    @property
+    def scale(self):
+        return self._scale
 
     def __iter__(self):
+        scale = self._scale
+        ms_dataset = self._ms_dataset
+        
         # For single-scale, just iterate normally and append scale index
-        if len(self.scale) == 1:
+        if len(scale) == 1:
             for batch in super().__iter__():
                 if isinstance(batch, (list, tuple)):
                     yield list(batch) + [0]
@@ -51,12 +61,12 @@ class MSDataLoader(DataLoader):
             batch_sampler = self.batch_sampler
             for batch_indices in batch_sampler:
                 idx_scale = 0
-                if hasattr(self._ms_dataset, 'train') and self._ms_dataset.train:
-                    idx_scale = random.randrange(0, len(self.scale))
-                    self._ms_dataset.set_scale(idx_scale)
+                if hasattr(ms_dataset, 'train') and ms_dataset.train:
+                    idx_scale = random.randrange(0, len(scale))
+                    ms_dataset.set_scale(idx_scale)
                 
                 # Manually load and collate the batch
-                batch = [self._ms_dataset[i] for i in batch_indices]
+                batch = [ms_dataset[i] for i in batch_indices]
                 batch = self.collate_fn(batch)
                 
                 if isinstance(batch, (list, tuple)):
