@@ -120,13 +120,22 @@ class Trainer:
         # tqdm_train = tqdm(self.loader_train, ncols=80)
         for batch, batch_data in enumerate(self.loader_train):
             # Unpack batch data - handle both old and new format
-            if len(batch_data) == 5:
+            # Format: [lr, hr, filename, (kernel, noise if degradation), idx_scale]
+            if len(batch_data) == 6:
+                # With degradation: lr, hr, filename, kernel, noise, idx_scale
+                lr, hr, _, gt_kernel, gt_noise, idx_scale = batch_data
+            elif len(batch_data) == 5:
+                # With degradation but no idx_scale from loader
                 lr, hr, _, gt_kernel, gt_noise = batch_data
                 idx_scale = 0
-            elif len(batch_data) == 6:
-                lr, hr, _, gt_kernel, gt_noise, idx_scale = batch_data
-            else:
+            elif len(batch_data) == 4:
+                # Without degradation: lr, hr, filename, idx_scale
                 lr, hr, _, idx_scale = batch_data
+                gt_kernel, gt_noise = None, None
+            else:
+                # Fallback: lr, hr, filename
+                lr, hr, _ = batch_data[:3]
+                idx_scale = batch_data[3] if len(batch_data) > 3 else 0
                 gt_kernel, gt_noise = None, None
 
             lr, hr = self.prepare([lr, hr])  # Convert input LR, HR images to half precision
