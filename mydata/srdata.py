@@ -106,13 +106,14 @@ class SRData(data.Dataset):
         lr_tensor, hr_tensor = common.np2Tensor([lr, hr], self.args.rgb_range)
         
         # Prepare degradation parameters tensors if available
-        if deg_params is not None:
+        if deg_params is not None and self.use_degradation:
             kernel_size = getattr(self.args, 'kernel_size', 21)
             kernel_tensor = common.get_degradation_kernel_tensor(deg_params, kernel_size)
             noise_tensor = common.get_noise_level_tensor(deg_params)
             return lr_tensor, hr_tensor, filename, kernel_tensor, noise_tensor
         
-        return lr_tensor, hr_tensor, filename, None, None
+        # Return without degradation params (3 items only)
+        return lr_tensor, hr_tensor, filename
 
     def __len__(self):
         """Return dataset size"""
