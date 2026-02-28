@@ -25,7 +25,7 @@ parser.add_argument('--dir_demo', type=str, default='../DPDNN',  # Demo image di
                     help='demo image directory')
 parser.add_argument('--data_train', type=str, default='DIV2K',  # Training dataset name
                     help='train dataset name')
-parser.add_argument('--data_test', type=str, default='Set5',  # Test dataset name
+parser.add_argument('--data_test', type=str, default='DIV2K',  # Test dataset name
                     help='test dataset name')
 parser.add_argument('--benchmark_noise', action='store_true',  # Use noisy benchmark sets
                     help='use noisy benchmark sets')
@@ -33,7 +33,7 @@ parser.add_argument('--n_train', type=int, default=300,  # Training set size
                     help='number of training set')
 parser.add_argument('--n_val', type=int, default=100,  # Validation set size
                     help='number of validation set')
-parser.add_argument('--offset_val', type=int, default=908,  # Validation index offset
+parser.add_argument('--offset_val', type=int, default=300,  # Validation index offset (starts after n_train)
                     help='validation index offest')
 parser.add_argument('--ext', type=str, default='img',  # Dataset file extension
                     help='dataset file extension')
