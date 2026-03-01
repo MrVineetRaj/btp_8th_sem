@@ -9,7 +9,7 @@ parser.add_argument('--template', default='.',  # Set various templates in optio
                     help='You can set various templates in option.py')
 
 # Hardware settings
-parser.add_argument('--n_threads', type=int, default=4,  # Number of threads for data loading
+parser.add_argument('--n_threads', type=int, default=2,  # Number of threads for data loading (2 for Colab)
                     help='number of threads for data loading')
 parser.add_argument('--cpu', action='store_true',  # Use CPU only
                     help='use cpu only')
@@ -29,17 +29,17 @@ parser.add_argument('--data_test', type=str, default='DIV2K',  # Test dataset na
                     help='test dataset name')
 parser.add_argument('--benchmark_noise', action='store_true',  # Use noisy benchmark sets
                     help='use noisy benchmark sets')
-parser.add_argument('--n_train', type=int, default=300,  # Training set size
+parser.add_argument('--n_train', type=int, default=300,  # Training set size (300 images from DIV2K)
                     help='number of training set')
-parser.add_argument('--n_val', type=int, default=100,  # Validation set size
+parser.add_argument('--n_val', type=int, default=200,  # Validation set size (200 images)
                     help='number of validation set')
-parser.add_argument('--offset_val', type=int, default=300,  # Validation index offset (starts after n_train)
+parser.add_argument('--offset_val', type=int, default=300,  # Validation starts at image 301
                     help='validation index offest')
 parser.add_argument('--ext', type=str, default='img',  # Dataset file extension
                     help='dataset file extension')
 parser.add_argument('--scale', default='2',  # Super-resolution scale
                     help='super resolution scale')
-parser.add_argument('--patch_size', type=int, default=400,  # Output patch size
+parser.add_argument('--patch_size', type=int, default=96,  # Output patch size (96 for efficient training)
                     help='output patch size')
 parser.add_argument('--rgb_range', type=int, default=255,  # Maximum RGB value
                     help='maximum value of RGB')
@@ -79,9 +79,9 @@ parser.add_argument('--reset', action='store_true',  # Reset training
                     help='reset the training')
 parser.add_argument('--test_every', type=int, default=1000,  # Test every N batches
                     help='do test per every N batches')
-parser.add_argument('--epochs', type=int, default=10,  # Number of epochs to train
+parser.add_argument('--epochs', type=int, default=200,  # Number of epochs to train
                     help='number of epochs to train')
-parser.add_argument('--batch_size', type=int, default=1,  # Training batch size
+parser.add_argument('--batch_size', type=int, default=4,  # Training batch size
                     help='input batch size for training')
 parser.add_argument('--split_batch', type=int, default=1,  # Split batch into smaller chunks
                     help='split the batch into smaller chunks')
@@ -97,7 +97,7 @@ parser.add_argument('--lr', type=float, default=1e-4,  # Learning rate
                     help='learning rate')
 parser.add_argument('--lr_decay', type=int, default=400,  # Learning rate decay every N epochs
                     help='learning rate decay per N epochs')
-parser.add_argument('--decay_type', type=str, default='Mstep_300_450_600',  # Learning rate decay type
+parser.add_argument('--decay_type', type=str, default='step_100_150',  # Learning rate decay at epochs 100 and 150
                     help='learning rate decay type')
 parser.add_argument('--gamma', type=float, default=0.5,  # Learning rate decay factor for step decay
                     help='learning rate decay factor for step decay')
@@ -132,7 +132,7 @@ parser.add_argument('--resume', type=int, default=0,  # Resume from specific che
                     help='resume from specific checkpoint')
 parser.add_argument('--print_model', action='store_true',  # Print model
                     help='print model')
-parser.add_argument('--save_models', action='store_true',  # Save all intermediate models
+parser.add_argument('--save_models', action='store_true', default=True,  # Save all intermediate models
                     help='save all intermediate models')
 parser.add_argument('--print_every', type=int, default=50,  # Batches before logging training status
                     help='how many batches to wait before logging training status')
