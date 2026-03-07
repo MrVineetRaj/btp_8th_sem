@@ -29,11 +29,11 @@ parser.add_argument('--data_test', type=str, default='DIV2K',  # Test dataset na
                     help='test dataset name')
 parser.add_argument('--benchmark_noise', action='store_true',  # Use noisy benchmark sets
                     help='use noisy benchmark sets')
-parser.add_argument('--n_train', type=int, default=300,  # Training set size (300 images from DIV2K)
+parser.add_argument('--n_train', type=int, default=5,  # Training set size (300 images from DIV2K)
                     help='number of training set')
-parser.add_argument('--n_val', type=int, default=200,  # Validation set size (200 images)
+parser.add_argument('--n_val', type=int, default=10,  # Validation set size (200 images)
                     help='number of validation set')
-parser.add_argument('--offset_val', type=int, default=300,  # Validation starts at image 301
+parser.add_argument('--offset_val', type=int, default=5,  # Validation starts at image 301
                     help='validation index offest')
 parser.add_argument('--ext', type=str, default='img',  # Dataset file extension
                     help='dataset file extension')
