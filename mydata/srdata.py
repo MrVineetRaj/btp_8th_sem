@@ -161,8 +161,7 @@ class SRData(data.Dataset):
             
             lr = common.add_noise(lr, self.args.noise)  # Add noise
         else:
-            ih, iw = lr.shape[0:2]
-            hr = hr[0:ih * scale, 0:iw * scale]  # Simple crop
+            pass  # Keep original HR dimensions
 
         return lr, hr, deg_params
 
