@@ -73,8 +73,8 @@ class Trainer:
                     sr = utility.quantize(sr, self.args.rgb_range)  # Convert tensor to RGB range
                     # hr_size = hr.shape[2:]  # Can try both hr or sr sampling
                     # sr = F.interpolate(sr, size=hr_size, mode='bilinear', align_corners=False)
-                    sr_size = sr.shape[2:]
-                    hr = F.interpolate(hr, size=sr_size, mode='bilinear', align_corners=False)
+                    hr_size = hr.shape[2:]
+                    sr = F.interpolate(sr, size=hr_size, mode='bilinear', align_corners=False)
                     save_list = [sr]  # Save processed SR image
                     if not no_eval:  # Calculate PSNR
                         eval_acc += utility.calc_psnr(

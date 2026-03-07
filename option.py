@@ -124,7 +124,7 @@ parser.add_argument('--skip_threshold', type=float, default='1e10',  # Skip batc
 # Log settings
 parser.add_argument('--pre_train', type=str, default='.',  # Pretrained model path (. means no pretrain)
                     help='pre-trained model directory')
-parser.add_argument('--save', type=str, default='/content/drive/MyDrive/College\ BTP/experiment/SR_X2_BI',  # Filename for saving
+parser.add_argument('--save', type=str, default='/content/drive/MyDrive/College_BTP/experiment/SR_X2_BI',  # Filename for saving
                     help='file name to save')
 parser.add_argument('--load', type=str, default='.',  # Filename for loading
                     help='file name to load')
