@@ -6,15 +6,23 @@ import torch.nn.functional as F
 
 
 class PFM(nn.Module):  # Parallel cross-fusion module
-    def __init__(self):
+    def __init__(self, feature_channels=8, image_channels=3, hidden_channels=32):
+        """Parallel cross-fusion module for combining image and prior features.
+        
+        Args:
+            feature_channels: Number of input channels for feature map f (default: 8 for edge,
+                             or 8 for fused edge+wavelet features)
+            image_channels: Number of input channels for image h (default: 3 for RGB)
+            hidden_channels: Number of hidden channels (default: 32)
+        """
         super(PFM, self).__init__()
 
-        self.convf = nn.Conv2d(8, 32, kernel_size=3, padding=1)  # Map f to 32 channels
-        self.convh = nn.Conv2d(3, 32, kernel_size=3, padding=1)  # Map h to 32 channels
+        self.convf = nn.Conv2d(feature_channels, hidden_channels, kernel_size=3, padding=1)
+        self.convh = nn.Conv2d(image_channels, hidden_channels, kernel_size=3, padding=1)
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
-        self.convf_1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
-        self.convh_1 = nn.Conv2d(32, 32, kernel_size=3, padding=1)
+        self.convf_1 = nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1)
+        self.convh_1 = nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1)
         # self.gate = nn.LSTM(64, 32, batch_first=True)  # Select complementary features
 
     def forward(self, h, f):

@@ -9,6 +9,8 @@ from models.edgemap import EdgeMap
 from models.edgefeatureextractionModule import EAFM
 from models.intermediatevariableupdateModule import EGIM
 from models.variableguidereconstructionModule import IGRM
+from models.waveletmap import WaveletMap
+from models.waveletfeatureextractionModule import WAFM, WaveletFeatureFusion
 from models.degradationEstimation import DegradationEstimator, DegradationAwareConv
 import torch.nn.functional as F
 
@@ -119,6 +121,13 @@ class EDDUN(nn.Module):
         self.EAFM = EAFM()
         self.EGIM = EGIM()
         self.IGRM = IGRM()
+        
+        # -------------------Wavelet guidance block (NEW)------------------------------------------
+        self.waveletmap = WaveletMap()
+        self.WAFM = WAFM(in_channels=12, hidden_channels=48)
+        self.w_down = nn.Conv2d(12, 12, kernel_size=3, stride=8, padding=1)
+        self.gamma = nn.ParameterList([nn.Parameter(torch.tensor(0.5)) for _ in range(T)])
+        self.feature_fusion = WaveletFeatureFusion(edge_channels=8, wavelet_channels=12, out_channels=8)
         # self.test_only = args.test_only
 
     def forward(self, y, return_degradation=False):  # [batch_size ,3 ,7 ,270 ,480] ;
@@ -165,9 +174,15 @@ class EDDUN(nn.Module):
         f_init.append(self.edgemap(x))  # Initialize f(0) channel=8
         x_init.append(x)  # Initialize x(0) channel=3
         v_init.append(x)  # Initialize v(0) channel=3
+        
+        # 2. Wavelet feature initialization (NEW)
+        w_init = []
+        w_init.append(self.waveletmap(x))  # Initialize w(0) channel=12
+        
         z_ls = []
         t_ls = []
         r_ls = []
+        w_ls = []  # Wavelet update list (NEW)
         # #-------------------------------------------------------------------------------------
         # #--------------------------------------Move denoising outside-----------------------------
         fea = self.Fe_e[0](x_init[0])
@@ -235,18 +250,27 @@ class EDDUN(nn.Module):
             # # --------------------texture module [to be deleted]--------------------------------------
             # x_texture.append(x_texture[i] - self.delta[i] * (
             #         self.conv_up(self.conv_down(x) - y) + self.eta[i] * (x - v)))
-            # # -----------------------edge guided module---------------------------------------------
+            #             # -----------------------edge guided module---------------------------------------------
             # Downsample input
             x_init[i] = self.input_down(x_init[i])
             v_init[i] = self.input_down(v_init[i])
             f_init[i] = self.f_down(f_init[i])
+            w_init[i] = self.w_down(w_init[i])  # Downsample wavelet features (NEW)
             y = self.y_down(y)
-            # 1.EAFM module
+            # 1.EAFM module (edge feature update)
             z_ls.append(f_init[i] - self.delta_1[i] * (f_init[i] - self.edgemap(x_init[i])))
             f_init.append(self.EAFM(z_ls[i]))
-            # 2.EGIM module
+            
+            # 2.WAFM module (wavelet feature update) - NEW
+            w_ls.append(w_init[i] - self.gamma[i] * (w_init[i] - self.waveletmap(x_init[i])))
+            w_init.append(self.WAFM(w_ls[i]))
+            
+            # 3.Feature fusion (edge + wavelet) - NEW
+            fused_features = self.feature_fusion(f_init[i + 1], w_init[i + 1])
+            
+            # 4.EGIM module (uses fused features instead of edge-only)
             t_ls.append(v_init[i] - self.delta_2[i] * (v_init[i] - x_init[i]))
-            v_init.append(self.EGIM(t_ls[i], f_init[i + 1]))
+            v_init.append(self.EGIM(t_ls[i], fused_features))
             # 3.IGRM module with noise-aware data fidelity
             temp_size = self.conv_down(x_init[i]).shape[2:]
             temp_y = F.interpolate(y, size=temp_size, mode='bilinear', align_corners=False)
@@ -271,6 +295,8 @@ class EDDUN(nn.Module):
                                           align_corners=False)
             f_init[i + 1] = F.interpolate(f_init[i + 1], size=input_target, mode='bilinear',
                                           align_corners=False)
+            w_init[i + 1] = F.interpolate(w_init[i + 1], size=input_target, mode='bilinear',
+                                          align_corners=False)  # Upsample wavelet features (NEW)
             y = F.interpolate(y, size=y_target, mode='bilinear', align_corners=False)
             # #-----------------------RPM module with degradation-aware blur--------------------------
             # Use estimated blur kernel if available, otherwise use fixed blur
