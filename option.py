@@ -9,7 +9,7 @@ parser.add_argument('--template', default='.',  # Set various templates in optio
                     help='You can set various templates in option.py')
 
 # Hardware settings
-parser.add_argument('--n_threads', type=int, default=2,  # Number of threads for data loading (2 for Colab)
+parser.add_argument('--n_threads', type=int, default=8,  # Number of threads for data loading (2 for Colab)
                     help='number of threads for data loading')
 parser.add_argument('--cpu', action='store_true',  # Use CPU only
                     help='use cpu only')
@@ -70,7 +70,7 @@ parser.add_argument('--model', default='EPGDUN',  # Model name
 
 parser.add_argument('--act', type=str, default='relu',  # Activation function
                     help='activation function')
-parser.add_argument('--precision', type=str, default='Single',  # Precision
+parser.add_argument('--precision', type=str, default='half',  # Precision
                     choices=('single', 'half'),
                     help='FP precision for test (single | half)')
 
@@ -81,7 +81,7 @@ parser.add_argument('--test_every', type=int, default=1000,  # Test every N batc
                     help='do test per every N batches')
 parser.add_argument('--epochs', type=int, default=10,  # Number of epochs to train
                     help='number of epochs to train')
-parser.add_argument('--batch_size', type=int, default=4,  # Training batch size
+parser.add_argument('--batch_size', type=int, default=24,  # Training batch size
                     help='input batch size for training')
 parser.add_argument('--split_batch', type=int, default=1,  # Split batch into smaller chunks
                     help='split the batch into smaller chunks')
@@ -166,4 +166,3 @@ for arg in vars(args):
         vars(args)[arg] = True
     elif vars(args)[arg] == 'False':
         vars(args)[arg] = False
-
